@@ -8,6 +8,8 @@ import numpy as np
 from concurrent.futures import ThreadPoolExecutor
 import hashlib
 
+from behavioral_model import BehavioralModel
+
 class DataProcessor:
     def __init__(self, content_classifier_endpoint, behavioral_model_path):
         self.kinesis_client = boto3.client('kinesis')
