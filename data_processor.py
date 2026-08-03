@@ -69,6 +69,10 @@ class DataProcessor:
 
         is_unusual_port = self._check_unusual_port(protocol, dst_port)
 
+        # Flow records routinely omit fields; comparing None raises TypeError and
+        # encoding None raises AttributeError, both of which killed the record.
+        bytes_transferred = bytes_transferred or 0
+        dst_ip = dst_ip or 'unknown'
         is_large_transfer = bytes_transferred > 10000000
 
         if is_suspicious_destination or is_unusual_port or is_large_transfer:

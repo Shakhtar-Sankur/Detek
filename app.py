@@ -27,28 +27,37 @@ def get_alerts():
         'Limit': limit
     }
 
+    # "timestamp" and "source" are DynamoDB reserved words. Used directly in a
+    # FilterExpression they raise ValidationException, so both go through
+    # ExpressionAttributeNames placeholders.
     filter_expressions = []
     expression_attr_values = {}
+    expression_attr_names = {}
 
     if severity:
         filter_expressions.append('severity = :severity')
         expression_attr_values[':severity'] = severity
 
     if source:
-        filter_expressions.append('source = :source')
+        filter_expressions.append('#src = :source')
+        expression_attr_names['#src'] = 'source'
         expression_attr_values[':source'] = source
 
     if start_time:
-        filter_expressions.append('timestamp >= :start_time')
+        filter_expressions.append('#ts >= :start_time')
+        expression_attr_names['#ts'] = 'timestamp'
         expression_attr_values[':start_time'] = int(start_time)
 
     if end_time:
-        filter_expressions.append('timestamp <= :end_time')
+        filter_expressions.append('#ts <= :end_time')
+        expression_attr_names['#ts'] = 'timestamp'
         expression_attr_values[':end_time'] = int(end_time)
 
     if filter_expressions:
         scan_params['FilterExpression'] = ' AND '.join(filter_expressions)
         scan_params['ExpressionAttributeValues'] = expression_attr_values
+        if expression_attr_names:
+            scan_params['ExpressionAttributeNames'] = expression_attr_names
 
     try:
         response = alerts_table.scan(**scan_params)
@@ -106,15 +115,24 @@ def get_stats():
         start_time = int((datetime.now() - timedelta(days=days)).timestamp())
 
         scan_params = {
-            'FilterExpression': 'timestamp BETWEEN :start_time AND :end_time',
+            'FilterExpression': '#ts BETWEEN :start_time AND :end_time',
+            'ExpressionAttributeNames': {'#ts': 'timestamp'},
             'ExpressionAttributeValues': {
                 ':start_time': start_time,
                 ':end_time': end_time
             }
         }
 
-        response = alerts_table.scan(**scan_params)
-        alerts = response.get('Items', [])
+        # A single scan returns at most 1 MB, so statistics over a busy window
+        # were silently computed from a fraction of the table.
+        alerts = []
+        while True:
+            response = alerts_table.scan(**scan_params)
+            alerts.extend(response.get('Items', []))
+            last_key = response.get('LastEvaluatedKey')
+            if not last_key:
+                break
+            scan_params['ExclusiveStartKey'] = last_key
 
         total_alerts = len(alerts)
         alerts_by_severity = {}

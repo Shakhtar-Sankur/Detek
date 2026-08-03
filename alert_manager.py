@@ -61,7 +61,8 @@ class AlertManager:
             start_time = end_time - threshold['window']
 
             response = self.alerts_table.scan(
-                FilterExpression='severity = :severity AND timestamp BETWEEN :start_time AND :end_time',
+                FilterExpression='severity = :severity AND #ts BETWEEN :start_time AND :end_time',
+                ExpressionAttributeNames={'#ts': 'timestamp'},
                 ExpressionAttributeValues={
                     ':severity': severity,
                     ':start_time': start_time,
