@@ -61,11 +61,17 @@ class LSTMAnomalyDetector(nn.Module):
         return out
 
 class BehavioralModel:
-    def __init__(self, model_path=None, input_dim=64, sequence_length=100):
+    def __init__(self, model_path=None, input_dim=None, sequence_length=100):
+        """`input_dim` defaults to the feature count the preprocessor actually emits.
+
+        It used to default to 64 while `get_expected_columns()` returned 12, so the
+        LSTM was built for a width the data never had and every forward pass raised
+        a shape error. Deriving it removes the chance of the two drifting apart.
+        """
         self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-        self.input_dim = input_dim
+        self.input_dim = input_dim if input_dim is not None else len(self.get_expected_columns())
         self.sequence_length = sequence_length
-        self.model = LSTMAnomalyDetector(input_dim)
+        self.model = LSTMAnomalyDetector(self.input_dim)
 
         if model_path and os.path.exists(model_path):
             self.model.load_state_dict(torch.load(model_path, map_location=self.device))
@@ -97,7 +103,10 @@ class BehavioralModel:
             if col not in features.columns:
                 features[col] = 0
 
-        features = features[expected_columns]
+        # get_dummies returns bool columns in pandas 2.x; concatenating those with
+        # the float columns yields an object-dtype frame, and torch.tensor then
+        # refuses it with "can't convert np.ndarray of type numpy.object_".
+        features = features[expected_columns].astype(np.float32)
 
         if self.feature_means is not None and self.feature_stds is not None:
             for i, col in enumerate(expected_columns):
@@ -152,6 +161,28 @@ class BehavioralModel:
 
     def train(self, normal_activities, anomalous_activities=None,
               epochs=10, batch_size=32, learning_rate=1e-4):
+        """Fit the detector. Requires examples of both classes.
+
+        With `anomalous_activities` empty every label is 0, and binary
+        cross-entropy then drives the network to output 0 for everything — a model
+        that reports "nothing is ever anomalous" and scores perfectly on its own
+        training set. Detecting from normal traffic alone needs a different
+        objective (reconstruction error or a one-class boundary), not this one.
+        """
+        if not anomalous_activities:
+            raise ValueError(
+                "train() needs anomalous_activities as well as normal ones. "
+                "Training on a single class collapses the model to a constant 0. "
+                "For normal-data-only detection, use a reconstruction or one-class "
+                "objective instead of this supervised binary head."
+            )
+
+        # Statistics are recomputed below, so clear any existing ones first —
+        # otherwise preprocess normalises with the old values and the block after
+        # it normalises the already-normalised result a second time.
+        self.feature_means = None
+        self.feature_stds = None
+
         normal_sequences = self.preprocess_user_activities(normal_activities)
         normal_labels = np.zeros(len(normal_sequences))
 
@@ -190,11 +221,11 @@ class BehavioralModel:
             for batch in dataloader:
                 optimizer.zero_grad()
 
-                sequences = batch['sequence'].to(self.device)
-                labels = batch['label'].to(self.device).view(-1, 1)
+                batch_sequences = batch['sequence'].to(self.device)
+                batch_labels = batch['label'].to(self.device).view(-1, 1)
 
-                outputs = self.model(sequences)
-                loss = criterion(outputs, labels)
+                outputs = self.model(batch_sequences)
+                loss = criterion(outputs, batch_labels)
 
                 loss.backward()
                 optimizer.step()

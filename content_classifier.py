@@ -62,25 +62,34 @@ class BERTClassifier(nn.Module):
         return logits
 
 class ContentClassifier:
+    CATEGORIES = {
+        0: 'non_sensitive',
+        1: 'pii',
+        2: 'financial',
+        3: 'health',
+        4: 'credentials',
+        5: 'intellectual_property'
+    }
+
     def __init__(self, model_path=None):
+        """Build the classifier with one output per category.
+
+        The head used to be created with BERTClassifier()'s default of two
+        classes while this map listed six, so argmax could only ever return 0 or
+        1 — financial, health, credentials and intellectual_property were
+        unreachable, and training on those labels indexed past the end of the
+        output layer.
+        """
         self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
         self.tokenizer = BertTokenizer.from_pretrained('bert-base-uncased')
-        self.model = BERTClassifier()
+        self.categories = dict(self.CATEGORIES)
+        self.model = BERTClassifier(n_classes=len(self.categories))
 
         if model_path:
             self.model.load_state_dict(torch.load(model_path, map_location=self.device))
 
         self.model.to(self.device)
         self.model.eval()
-
-        self.categories = {
-            0: 'non_sensitive',
-            1: 'pii',
-            2: 'financial',
-            3: 'health',
-            4: 'credentials',
-            5: 'intellectual_property'
-        }
 
     def predict(self, texts, batch_size=32):
         if not isinstance(texts, list):
