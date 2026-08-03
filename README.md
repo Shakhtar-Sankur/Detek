@@ -1,136 +1,61 @@
 # Detek
-# AI-Driven Real-Time Data Leak Detection Framework for AWS
 
-This repository contains the implementation of an AI-driven framework for real-time data leak detection and mitigation in AWS cloud environments, as described in our research paper. The system leverages deep learning, natural language processing, and behavioral analytics to identify both known and zero-day data exfiltration attempts across hybrid cloud infrastructures.
+**Data-leak detection for AWS: collect telemetry, classify content, model user behaviour,
+and raise prioritised alerts.**
 
----
+A reference implementation of a detection pipeline that watches CloudTrail and VPC Flow
+Logs, scores activity with two learned models, and routes the results to an alert
+manager and a small web dashboard.
 
-## Repository Structure
+## What's here
 
-```
-├── .github/                          
-│   ├── workflows/                    
-│   │   ├── build-test.yml            
-│   │   ├── deploy-dev.yml            
-│   │   ├── deploy-prod.yml           
-│   │   └── security-scan.yml         
-│   └── ISSUE_TEMPLATE/               
-├── architecture/                     
-│   ├── high-level-architecture.png   
-│   ├── component-diagrams/           
-│   └── sequence-diagrams/            
-├── benchmarks/                       
-├── deployment/                       
-│   ├── cloudformation/               
-│   │   ├── core-infrastructure.yml   
-│   │   ├── data-collection.yml       
-│   │   ├── processing-pipeline.yml   
-│   │   ├── detection-engine.yml      
-│   │   └── response-orchestration.yml
-│   ├── terraform/                    
-│   └── scripts/                      
-├── docs/                             
-│   ├── api-reference/                
-│   ├── user-guide/                   
-│   ├── admin-guide/                  
-│   └── development-guide/           
-├── ml-models/                        
-│   ├── content-classification/       
-│   │   ├── document-classifier/      
-│   │   ├── entity-recognition/       
-│   │   └── binary-classifier/        
-│   ├── behavioral-analysis/          
-│   │   ├── user-behavior/            
-│   │   ├── service-interaction/      
-│   │   └── temporal-patterns/        
-│   ├── contextual-intelligence/      
-│   └── training/                     
-├── src/                              
-│   ├── collectors/                   
-│   │   ├── network/                  
-│   │   ├── service/                  
-│   │   ├── application/              
-│   │   └── content/                  
-│   ├── processors/                   
-│   │   ├── normalizers/              
-│   │   ├── feature-extractors/       
-│   │   └── enrichment/               
-│   ├── detectors/                    
-│   │   ├── content-analyzers/        
-│   │   ├── behavior-analyzers/       
-│   │   ├── context-analyzers/        
-│   │   └── ensemble/                 
-│   ├── orchestrator/                 
-│   │   ├── alert-manager/            
-│   │   ├── containment/              
-│   │   └── remediation/              
-│   ├── api/                          
-│   │   ├── internal/                 
-│   │   └── external/                 
-│   └── utils/                        
-├── tests/                            
-│   ├── unit/                         
-│   ├── integration/                  
-│   ├── system/                       
-│   └── performance/                  
-├── tools/                            
-│   ├── simulation/                   
-│   └── analysis/                     
-├── .gitignore                        
-├── LICENSE                           
-├── README.md                         
-└── requirements.txt                  
+| File | Role |
+|---|---|
+| `cloudtrail_collector.py` | Pulls CloudTrail events — the service-level view of who did what |
+| `vpc_flow_collector.py` | Pulls VPC Flow Logs — the network view of what moved where |
+| `data_processor.py` | Normalises both sources into a common feature representation |
+| `content_classifier.py` | `BERTClassifier` over a `SensitiveContentDataset`, for spotting sensitive material in transferred content |
+| `behavioral_model.py` | `LSTMAnomalyDetector` over `UserActivityDataset`, for sequence anomalies in per-user activity |
+| `alert_manager.py` | Deduplication, severity scoring and routing |
+| `app.py` | Flask API — `/alerts`, `/alerts/<id>`, `/stats`, `/scan` |
+| `dashboard.py` | Server-rendered views over the same data |
+| `main.tf` | Terraform for the AWS resources the collectors read from |
+
+Two detectors rather than one is the central design choice. Content classification alone
+flags every legitimate transfer of a sensitive document; behavioural modelling alone
+misses a first-time exfiltration that looks procedurally normal. The pipeline is built so
+their scores combine.
+
+## Design targets
+
+- Sustain ~120K security events per day
+- Precision high enough that alerts stay actionable rather than ignored
+- Cut mean time to detect from hours to minutes
+
+## On the numbers
+
+The figures above are **design targets** that shaped the implementation — they are not
+measured results. This repository ships no benchmark harness and no trained weights, so
+nothing here reproduces them. They are recorded because they drove real decisions about
+architecture and algorithm choice, not as claims about observed performance.
+
+## Running it
+
+```bash
+pip install -r requirements.txt
+python app.py          # API on :5000
+python dashboard.py    # dashboard
 ```
 
----
+Both expect AWS credentials in the environment and the resources in `main.tf` to exist.
+The models are defined here but no trained weights are included.
 
-## Key Components
+## Status
 
-### 1. Data Collection Tier
-Captures diverse telemetry from multiple sources including:
-- **Network monitoring** (VPC Flow Logs, Transit Gateway, DNS)
-- **Service-level monitoring** (S3, CloudTrail, RDS, Lambda)
-- **Application telemetry**
-- **Content analysis**
+Working implementation of the collection, processing, detection and alerting path. Not a
+deployed system: there are no CI pipelines, CloudFormation templates, packaged docs or
+benchmark suite in this repository.
 
-### 2. Processing Tier
-Transforms raw telemetry into structured features through:
-- Data ingestion (Kinesis)
-- Normalization and standardization
-- Feature extraction and enrichment
-- Storage and indexing
+## Licence
 
-### 3. Analysis Tier
-Applies AI models for detection including:
-- Content classification models
-- Behavioral analysis models
-- Contextual intelligence models
-- Ensemble detection
-
-### 4. Orchestration Tier
-Coordinates responses across security controls:
-- Alert management and prioritization
-- Automated containment actions
-- Remediation workflows
-- Incident response coordination
-
-### 5. Management Tier
-Provides visibility and governance:
-- Dashboards and reporting
-- Configuration management
-- Continuous improvement
-- Compliance reporting
-
----
-
-## Getting Started
-
-### Prerequisites
-- AWS Account with appropriate permissions
-- Python 3.8+
-- Terraform 1.0+ or AWS CloudFormation
-- Docker
-- Git
-
-
-
+All rights reserved. Published for reading, not for reuse.
