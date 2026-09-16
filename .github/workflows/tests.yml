@@ -22,7 +22,7 @@ jobs:
 
       # CPU torch; transformers is not needed by the tested paths.
       - run: pip install torch --index-url https://download.pytorch.org/whl/cpu
-      - run: pip install boto3 numpy pandas pytest
+      - run: pip install boto3 numpy pandas requests pytest
 
       # The credentials in tests/conftest.py are deliberately invalid, so a test
       # that reached AWS would fail rather than touch an account.
