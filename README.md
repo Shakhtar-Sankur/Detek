@@ -65,6 +65,28 @@ Known gaps, stated plainly:
 - **`get_alerts` does not paginate.** `/api/stats` does; the alert list still returns one scan
   page.
 
+## Tests
+
+```bash
+pip install -r requirements-dev.txt
+pytest -q
+```
+
+22 tests, none of which touch AWS: the credentials in `tests/conftest.py` are
+deliberately invalid, so anything that reached the network would fail loudly.
+
+- **Flow-log parsing** — a real ACCEPT line becomes typed fields, a REJECT keeps
+  its action, and a NODATA line with dashes where the ports go is refused rather
+  than guessed at.
+- **The LSTM detector** — one probability per sequence, attention weights that
+  sum to 1 across time, and the model width matching the feature count the
+  preprocessor emits, which is the 64-vs-12 defect recorded below.
+- **Escalation** — two highs inside an hour escalate to critical, four mediums
+  do not, an alert from two hours ago does not count, and mediums plus a high
+  do not add up to five of anything.
+
+Run on Python 3.10 and 3.12 by [GitHub Actions](.github/workflows/tests.yml).
+
 ### Notes from a correctness pass
 
 Several defects were fixed rather than papered over, and they are worth knowing about if you
